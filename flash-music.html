@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlashBeat - فلاش مع الموسيقى</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;700;900&display=swap');
+
+  :root {
+    --bg: #050508;
+    --accent: #00f5ff;
+    --accent2: #ff00aa;
+    --accent3: #ffee00;
+    --glow: rgba(0, 245, 255, 0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Cairo', sans-serif;
+    background: var(--bg);
+    color: #fff;
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Flash overlay */
+  #flash-overlay {
+    position: fixed;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 999;
+    transition: opacity 0.02s ease;
+  }
+
+  /* Background visualizer */
+  #bg-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 10;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    gap: 24px;
+  }
+
+  /* Title */
+  .title {
+    text-align: center;
+  }
+  .title h1 {
+    font-size: clamp(2rem, 8vw, 4rem);
+    font-weight: 900;
+    letter-spacing: -2px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2), var(--accent3));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0,245,255,0.5));
+  }
+  .title p {
+    color: rgba(255,255,255,0.5);
+    font-size: 0.9rem;
+    margin-top: 4px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    width: 100%;
+    max-width: 400px;
+    border: 2px dashed rgba(0, 245, 255, 0.4);
+    border-radius: 20px;
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(0, 245, 255, 0.03);
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0, 245, 255, 0.08);
+    box-shadow: 0 0 30px rgba(0,245,255,0.2);
+  }
+  .upload-zone .icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    display: block;
+  }
+  .upload-zone p {
+    color: rgba(255,255,255,0.7);
+    font-size: 0.95rem;
+  }
+  .upload-zone span {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  #file-input { display: none; }
+
+  /* Track info */
+  .track-info {
+    display: none;
+    align-items: center;
+    gap: 16px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 16px 20px;
+    width: 100%;
+    max-width: 400px;
+  }
+  .track-info.visible { display: flex; }
+  .track-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+  }
+  .track-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+  .track-sub {
+    color: rgba(255,255,255,0.4);
+    font-size: 0.75rem;
+    margin-top: 2px;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  /* Play button */
+  .play-btn {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    cursor: pointer;
+    font-size: 1.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 0 30px rgba(0,245,255,0.4);
+    color: #000;
+  }
+  .play-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 50px rgba(0,245,255,0.6);
+  }
+  .play-btn:active { transform: scale(0.95); }
+  .play-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Progress */
+  .progress-wrap {
+    width: 100%;
+  }
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.1s linear;
+  }
+  .time-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.75rem;
+  }
+
+  /* Flash settings */
+  .settings-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 20px;
+    width: 100%;
+    max-width: 400px;
+  }
+  .settings-card h3 {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .setting-row:last-child { margin-bottom: 0; }
+  .setting-label {
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.8);
+  }
+  .setting-label small {
+    display: block;
+    color: rgba(255,255,255,0.35);
+    font-size: 0.72rem;
+  }
+
+  /* Toggle */
+  .toggle {
+    width: 48px;
+    height: 26px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 13px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.3s;
+    border: none;
+    flex-shrink: 0;
+  }
+  .toggle.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.3s;
+  }
+  .toggle.active::after {
+    transform: translateX(22px);
+  }
+
+  /* Slider */
+  .slider {
+    -webkit-appearance: none;
+    width: 120px;
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.1);
+    outline: none;
+  }
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,245,255,0.6);
+  }
+
+  /* Color mode */
+  .color-modes {
+    display: flex;
+    gap: 8px;
+  }
+  .color-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .color-dot.active {
+    border-color: white;
+    transform: scale(1.2);
+  }
+
+  /* Visualizer bars */
+  .visualizer {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 60px;
+    width: 100%;
+    max-width: 400px;
+  }
+  .bar {
+    flex: 1;
+    background: linear-gradient(to top, var(--accent), var(--accent2));
+    border-radius: 3px 3px 0 0;
+    min-height: 3px;
+    transition: height 0.05s ease;
+    opacity: 0.7;
+  }
+
+  /* Beat indicator */
+  .beat-ring {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    border: 3px solid rgba(0,245,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: all 0.05s ease;
+  }
+  .beat-ring.pulse {
+    border-color: var(--accent);
+    box-shadow: 0 0 30px rgba(0,245,255,0.6), inset 0 0 20px rgba(0,245,255,0.1);
+  }
+  .beat-inner {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(0,245,255,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    transition: all 0.05s ease;
+  }
+  .beat-ring.pulse .beat-inner {
+    background: rgba(0,245,255,0.15);
+    transform: scale(1.1);
+  }
+
+  /* Status */
+  .status {
+    text-align: center;
+    color: rgba(255,255,255,0.35);
+    font-size: 0.8rem;
+  }
+  .status span {
+    color: var(--accent);
+  }
+
+  /* Responsive */
+  @media (max-width: 380px) {
+    .container { padding: 16px 12px; gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="flash-overlay"></div>
+<canvas id="bg-canvas"></canvas>
+
+<div class="container">
+  <div class="title">
+    <h1>⚡ FlashBeat</h1>
+    <p>فلاش يتزامن مع الموسيقى</p>
+  </div>
+
+  <!-- Upload -->
+  <div class="upload-zone" id="upload-zone">
+    <span class="icon">🎵</span>
+    <p>اسحب ملف الموسيقى هنا<br>أو <span>انقر للاختيار</span></p>
+    <input type="file" id="file-input" accept="audio/*">
+  </div>
+
+  <!-- Track info -->
+  <div class="track-info" id="track-info">
+    <div class="track-icon">🎶</div>
+    <div>
+      <div class="track-name" id="track-name">—</div>
+      <div class="track-sub">جاهز للتشغيل</div>
+    </div>
+  </div>
+
+  <!-- Visualizer bars -->
+  <div class="visualizer" id="visualizer"></div>
+
+  <!-- Beat ring -->
+  <div class="beat-ring" id="beat-ring">
+    <div class="beat-inner" id="beat-inner">⚡</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="play-btn" id="play-btn" disabled>▶</button>
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="time-row">
+        <span id="time-cur">0:00</span>
+        <span id="time-dur">0:00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings-card">
+    <h3>⚙ الإعدادات</h3>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        فلاش الشاشة
+        <small>الشاشة تومض مع الإيقاع</small>
+      </div>
+      <button class="toggle active" id="toggle-flash"></button>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        حساسية الإيقاع
+        <small>كلما زاد كلما زاد الوميض</small>
+      </div>
+      <input type="range" class="slider" id="sensitivity" min="1" max="10" value="5">
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        لون الفلاش
+      </div>
+      <div class="color-modes">
+        <div class="color-dot active" style="background:#ffffff" data-color="white" title="أبيض"></div>
+        <div class="color-dot" style="background:#00f5ff" data-color="cyan" title="سماوي"></div>
+        <div class="color-dot" style="background:#ff00aa" data-color="pink" title="وردي"></div>
+        <div class="color-dot" style="background:#ffee00" data-color="yellow" title="أصفر"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status">ارفع ملف موسيقى للبدء</div>
+</div>
+
+<script>
+  // ─── State ───────────────────────────────────────────────
+  let audioCtx, analyser, source, gainNode;
+  let isPlaying = false;
+  let audioBuffer = null;
+  let startTime = 0, pauseOffset = 0;
+  let animFrame;
+  let flashEnabled = true;
+  let flashColor = 'white';
+  let sensitivity = 5;
+  const BAR_COUNT = 40;
+
+  // ─── DOM ─────────────────────────────────────────────────
+  const flashOverlay = document.getElementById('flash-overlay');
+  const uploadZone   = document.getElementById('upload-zone');
+  const fileInput    = document.getElementById('file-input');
+  const trackInfo    = document.getElementById('track-info');
+  const trackName    = document.getElementById('track-name');
+  const playBtn      = document.getElementById('play-btn');
+  const progressFill = document.getElementById('progress-fill');
+  const progressBar  = document.getElementById('progress-bar');
+  const timeCur      = document.getElementById('time-cur');
+  const timeDur      = document.getElementById('time-dur');
+  const toggleFlash  = document.getElementById('toggle-flash');
+  const sensitivitySlider = document.getElementById('sensitivity');
+  const beatRing     = document.getElementById('beat-ring');
+  const statusEl     = document.getElementById('status');
+  const visualizer   = document.getElementById('visualizer');
+  const bgCanvas     = document.getElementById('bg-canvas');
+  const bgCtx        = bgCanvas.getContext('2d');
+
+  // ─── Build visualizer bars ────────────────────────────────
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = '3px';
+    visualizer.appendChild(bar);
+  }
+  const bars = document.querySelectorAll('.bar');
+
+  // ─── Background canvas ────────────────────────────────────
+  function resizeCanvas() {
+    bgCanvas.width = window.innerWidth;
+    bgCanvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  // ─── Upload ───────────────────────────────────────────────
+  uploadZone.addEventListener('click', () => fileInput.click());
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('audio/')) loadFile(file);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+  });
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      try {
+        if (!audioCtx) initAudio();
+        audioBuffer = await audioCtx.decodeAudioData(e.target.result);
+        trackName.textContent = file.name.replace(/\.[^.]+$/, '');
+        trackInfo.classList.add('visible');
+        uploadZone.style.display = 'none';
+        playBtn.disabled = false;
+        timeDur.textContent = fmt(audioBuffer.duration);
+        statusEl.innerHTML = 'جاهز — اضغط <span>▶</span> للتشغيل';
+        pauseOffset = 0;
+      } catch(err) {
+        statusEl.textContent = 'تعذّر تحميل الملف، حاول مرة أخرى';
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function initAudio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.75;
+    gainNode = audioCtx.createGain();
+    analyser.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+  }
+
+  // ─── Playback ─────────────────────────────────────────────
+  playBtn.addEventListener('click', () => {
+    if (!audioBuffer) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    isPlaying ? pause() : play();
+  });
+
+  function play() {
+    if (source) { try { source.disconnect(); } catch(e) {} }
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    source.start(0, pauseOffset);
+    startTime = audioCtx.currentTime - pauseOffset;
+    isPlaying = true;
+    playBtn.textContent = '⏸';
+    statusEl.innerHTML = '🎵 يعزف الآن — <span>الفلاش فعّال</span>';
+    source.onended = () => {
+      if (isPlaying) { isPlaying = false; pauseOffset = 0; playBtn.textContent = '▶'; }
+    };
+    loop();
+  }
+
+  function pause() {
+    pauseOffset = audioCtx.currentTime - startTime;
+    source.stop();
+    isPlaying = false;
+    playBtn.textContent = '▶';
+    cancelAnimationFrame(animFrame);
+    statusEl.textContent = 'متوقف مؤقتاً';
+  }
+
+  // ─── Seek ─────────────────────────────────────────────────
+  progressBar.addEventListener('click', e => {
+    if (!audioBuffer) return;
+    const ratio = e.offsetX / progressBar.offsetWidth;
+    pauseOffset = ratio * audioBuffer.duration;
+    if (isPlaying) { source.stop(); play(); }
+    else { progressFill.style.width = (ratio * 100) + '%'; timeCur.textContent = fmt(pauseOffset); }
+  });
+
+  // ─── Settings ─────────────────────────────────────────────
+  toggleFlash.addEventListener('click', () => {
+    flashEnabled = !flashEnabled;
+    toggleFlash.classList.toggle('active', flashEnabled);
+  });
+
+  sensitivitySlider.addEventListener('input', () => { sensitivity = +sensitivitySlider.value; });
+
+  document.querySelectorAll('.color-dot').forEach(dot => {
+    dot.addEventListener('click', () => {
+      document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
+      dot.classList.add('active');
+      flashColor = dot.dataset.color;
+    });
+  });
+
+  // ─── Main loop ────────────────────────────────────────────
+  const dataArray = new Uint8Array(128);
+  let lastFlash = 0;
+  let flashCooldown = 0;
+  const COLORS = { white: 'rgba(255,255,255,', cyan: 'rgba(0,245,255,', pink: 'rgba(255,0,170,', yellow: 'rgba(255,238,0,' };
+
+  function loop() {
+    animFrame = requestAnimationFrame(loop);
+    analyser.getByteFrequencyData(dataArray);
+
+    const now = audioCtx.currentTime;
+    const elapsed = now - startTime;
+    const dur = audioBuffer.duration;
+    const progress = Math.min(elapsed / dur, 1);
+    progressFill.style.width = (progress * 100) + '%';
+    timeCur.textContent = fmt(elapsed);
+
+    // Average energy
+    const bass = avg(dataArray, 0, 10);
+    const mid  = avg(dataArray, 10, 40);
+    const total = avg(dataArray, 0, 60);
+
+    // Visualizer bars
+    const step = Math.floor(dataArray.length / BAR_COUNT);
+    bars.forEach((bar, i) => {
+      const val = dataArray[i * step] / 255;
+      const h = Math.max(3, val * 60);
+      bar.style.height = h + 'px';
+      bar.style.opacity = 0.4 + val * 0.6;
+    });
+
+    // Beat detection (bass heavy)
+    const beatThreshold = (8 - sensitivity) * 10 + 40; // ~50-120
+    const isBeat = bass > beatThreshold && (now - lastFlash) > 0.08;
+
+    if (isBeat) {
+      lastFlash = now;
+      // Flash overlay
+      if (flashEnabled) {
+        const intensity = Math.min((bass - beatThreshold) / 80, 1);
+        flashOverlay.style.background = `${COLORS[flashColor]}${0.3 + intensity * 0.5})`;
+        flashOverlay.style.opacity = 0.6 + intensity * 0.3;
+        setTimeout(() => { flashOverlay.style.opacity = 0; }, 60 + intensity * 40);
+      }
+      beatRing.classList.add('pulse');
+      setTimeout(() => beatRing.classList.remove('pulse'), 100);
+    }
+
+    // Background particle effect
+    drawBg(bass, mid, total);
+  }
+
+  // ─── Background ───────────────────────────────────────────
+  let particles = Array.from({ length: 60 }, () => ({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    r: Math.random() * 2 + 0.5,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: (Math.random() - 0.5) * 0.4,
+    alpha: Math.random() * 0.5 + 0.1
+  }));
+
+  function drawBg(bass, mid, total) {
+    const w = bgCanvas.width, h = bgCanvas.height;
+    bgCtx.fillStyle = 'rgba(5,5,8,0.15)';
+    bgCtx.fillRect(0, 0, w, h);
+
+    const energy = total / 255;
+    particles.forEach(p => {
+      p.x += p.vx * (1 + energy * 3);
+      p.y += p.vy * (1 + energy * 3);
+      if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
+      if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+      const alpha = p.alpha * (0.3 + energy * 0.7);
+      bgCtx.beginPath();
+      bgCtx.arc(p.x, p.y, p.r * (1 + energy), 0, Math.PI * 2);
+      bgCtx.fillStyle = `rgba(0,245,255,${alpha})`;
+      bgCtx.fill();
+    });
+
+    // Center glow
+    if (energy > 0.2) {
+      const cx = w / 2, cy = h / 2;
+      const grad = bgCtx.createRadialGradient(cx, cy, 0, cx, cy, 200 + energy * 150);
+      grad.addColorStop(0, `rgba(0,245,255,${energy * 0.08})`);
+      grad.addColorStop(0.5, `rgba(255,0,170,${energy * 0.04})`);
+      grad.addColorStop(1, 'transparent');
+      bgCtx.fillStyle = grad;
+      bgCtx.fillRect(0, 0, w, h);
+    }
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────
+  function avg(arr, from, to) {
+    let sum = 0;
+    for (let i = from; i < to && i < arr.length; i++) sum += arr[i];
+    return sum / (to - from);
+  }
+  function fmt(s) {
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  }
+</script>
+</body>
+</html>
